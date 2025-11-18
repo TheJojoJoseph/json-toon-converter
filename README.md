@@ -388,4 +388,4 @@ If you find this package useful, please consider:
 
 ---
 
-Made with ❤️ for the AI community
+
