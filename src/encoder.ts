@@ -141,6 +141,8 @@ export class ToonEncoder {
 
     const [, value] = entries[0];
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      // Don't fold if the nested object is empty
+      if (Object.keys(value).length === 0) return false;
       return true;
     }
 
@@ -397,7 +399,7 @@ export class ToonEncoder {
         if (item === null) value = 'null';
         else if (typeof item === 'boolean') value = item.toString();
         else if (typeof item === 'number') value = normalizeNumber(item).toString();
-        // Quote strings if array has mixed types (primitives and objects)
+        // Quote strings if array has mixed types (primitives and objects/arrays) for disambiguation
         else if (hasMixedTypes) value = `"${escapeString(item)}"`;
         else value = quoteString(item, this.delimiter);
         
