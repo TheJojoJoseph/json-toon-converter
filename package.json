@@ -1,5 +1,5 @@
 {
-  "name": "@toon/toon2json",
+  "name": "@jojojoseph/toon-json-converter",
   "version": "2.0.1",
   "description": "A lightweight, efficient library for converting between JSON and TOON (Token-Oriented Object Notation) formats, optimized for LLM token usage",
   "main": "dist/index.js",
