@@ -1,20 +1,6 @@
 # @toon-json/converter
 
-[![npm version](https://badge.fury.io/js/@toon-json%2Fconverter.svg)](https://www.npmjs.com/package/@toon-json/converter)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-A lightweight, efficient library for converting between JSON and TOON (Token-Oriented Object Notation) formats, optimized for LLM token usage.
-
-## What is TOON?
-
-TOON (Token-Oriented Object Notation) is a compact data serialization format designed to optimize token usage for Large Language Models (LLMs). It removes redundancies found in JSON (curly braces, brackets, repeated quotes) while maintaining full compatibility with JSON's data model.
-
-### Key Benefits
-
-- **30-60% fewer tokens** for flat, uniform data structures
-- **Human and LLM-friendly** readable format
-- **Lossless conversion** - perfect round-trip with JSON
-- **Ideal for AI workflows** - prompts, training data, API responses
+A lightweight library for converting between JSON and TOON (Token-Oriented Object Notation) - a compact format that uses **30-60% fewer tokens** for LLMs.
 
 ## Installation
 
@@ -22,269 +8,187 @@ TOON (Token-Oriented Object Notation) is a compact data serialization format des
 npm install @toon-json/converter
 ```
 
-## Quick Start
+## Basic Usage
 
 ```typescript
 import { jsonToToon, toonToJson } from '@toon-json/converter';
 
-// Convert JSON to TOON
-const data = {
-  users: [
-    { id: 1, name: 'Alice', role: 'admin' },
-    { id: 2, name: 'Bob', role: 'user' }
-  ]
-};
+const data = { name: 'Alice', age: 30, active: true };
 
 const toon = jsonToToon(data);
-console.log(toon);
-// Output:
-//   users
-//     id  name   role
-//     1   Alice  admin
-//     2   Bob    user
+// name: Alice
+// age: 30
+// active: true
 
-// Convert TOON back to JSON
 const json = toonToJson(toon);
-console.log(json); // Original data structure
-```
-
-## Usage
-
-### Basic Conversion
-
-```typescript
-import { jsonToToon, toonToJson, ToonConverter } from '@toon-json/converter';
-
-// Using convenience functions
-const toon = jsonToToon({ name: 'Alice', age: 30 });
-const json = toonToJson(toon);
-
-// Using the ToonConverter class
-const toon2 = ToonConverter.toToon({ name: 'Bob', age: 25 });
-const json2 = ToonConverter.toJson(toon2);
-```
-
-### Advanced Usage with Options
-
-#### Encoding Options
-
-```typescript
-import { ToonEncoder } from '@toon-json/converter';
-
-const encoder = new ToonEncoder({
-  indent: 4,              // Number of spaces for indentation (default: 2)
-  alignColumns: true,     // Align table columns (default: true)
-  minColumnWidth: 1       // Minimum column width (default: 1)
-});
-
-const toon = encoder.encode(data);
-```
-
-#### Decoding Options
-
-```typescript
-import { ToonDecoder } from '@toon-json/converter';
-
-const decoder = new ToonDecoder({
-  preserveNumbers: true,   // Parse numbers as numbers (default: true)
-  preserveBooleans: true   // Parse booleans as booleans (default: true)
-});
-
-const json = decoder.decode(toon);
+// { name: 'Alice', age: 30, active: true }
 ```
 
 ## Examples
 
-### Simple Objects
+### Simple Object
 
-**JSON:**
-```json
-{
-  "name": "Alice",
-  "age": 30,
-  "active": true
-}
+```typescript
+jsonToToon({ name: 'Bob', city: 'NYC' });
+```
+```
+name: Bob
+city: NYC
 ```
 
-**TOON:**
-```
-  name Alice
-  age 30
-  active true
-```
+### Nested Object
 
-### Nested Objects
-
-**JSON:**
-```json
-{
-  "user": {
-    "name": "Bob",
-    "profile": {
-      "age": 25,
-      "city": "NYC"
-    }
+```typescript
+jsonToToon({
+  user: {
+    profile: { age: 25, city: 'NYC' }
   }
-}
+});
+```
+```
+user:
+  profile:
+    age: 25
+    city: NYC
 ```
 
-**TOON:**
-```
-  user
-    name Bob
-    profile
-      age 25
-      city NYC
-```
+### Array of Objects (Tables)
 
-### Arrays of Objects (Table Format)
-
-**JSON:**
-```json
-{
-  "products": [
-    { "sku": "A001", "name": "Widget", "price": 19.99 },
-    { "sku": "A002", "name": "Gadget", "price": 29.99 }
+```typescript
+jsonToToon({
+  users: [
+    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 2, name: 'Bob', role: 'user' }
   ]
-}
+});
+```
+```
+users[2]{id,name,role}:
+  1,Alice,admin
+  2,Bob,user
 ```
 
-**TOON:**
+### Arrays
+
+```typescript
+jsonToToon({ tags: ['ai', 'ml', 'data'] });
 ```
-  products
-    sku   name    price
-    A001  Widget  19.99
-    A002  Gadget  29.99
+```
+tags[3]: ai,ml,data
 ```
 
-### Complex Structures
+### Mixed Arrays
 
-**JSON:**
-```json
-{
-  "status": "success",
-  "data": [
-    { "id": 1, "title": "Post 1", "views": 1500 },
-    { "id": 2, "title": "Post 2", "views": 2300 }
+```typescript
+jsonToToon({
+  items: [
+    'red',
+    { id: 1, label: 'blue' },
+    42
+  ]
+});
+```
+```
+items:
+  - "red"
+  - id: 1
+    label: blue
+  - 42
+```
+
+### Complex Structure
+
+```typescript
+jsonToToon({
+  status: 'success',
+  data: [
+    { id: 1, title: 'Post 1', views: 1500 },
+    { id: 2, title: 'Post 2', views: 2300 }
   ],
-  "meta": {
-    "page": 1,
-    "total": 2
-  }
-}
+  meta: { page: 1, total: 2 }
+});
+```
+```
+status: success
+data[2]{id,title,views}:
+  1,"Post 1",1500
+  2,"Post 2",2300
+meta:
+  page: 1
+  total: 2
 ```
 
-**TOON:**
-```
-  status success
-  data
-    id  title   views
-    1   Post 1  1500
-    2   Post 2  2300
-  meta
-    page 1
-    total 2
-```
-
-## API Reference
-
-### Functions
-
-#### `jsonToToon(data, options?)`
-
-Converts JSON data to TOON format.
-
-- **Parameters:**
-  - `data: JsonValue` - The JSON data to convert
-  - `options?: ToonEncodeOptions` - Optional encoding options
-- **Returns:** `string` - The TOON formatted string
-
-#### `toonToJson(toon, options?)`
-
-Converts TOON format to JSON data.
-
-- **Parameters:**
-  - `toon: string` - The TOON formatted string
-  - `options?: ToonDecodeOptions` - Optional decoding options
-- **Returns:** `JsonValue` - The parsed JSON data
-
-### Classes
-
-#### `ToonEncoder`
-
-Encoder class for converting JSON to TOON.
+### Multiline Strings
 
 ```typescript
-const encoder = new ToonEncoder(options);
+jsonToToon({ bio: 'Line1\nLine2\nLine3' });
+```
+```
+bio: |
+  Line1
+  Line2
+  Line3
+```
+
+### Empty Structures
+
+```typescript
+jsonToToon({ emptyObj: {}, emptyArr: [] });
+```
+```
+emptyObj: {}
+emptyArr: []
+```
+
+### Special Characters
+
+```typescript
+jsonToToon({
+  quote: 'He said "Hi"',
+  jsonChars: '{value}: [1,2]'
+});
+```
+```
+quote: "He said \"Hi\""
+jsonChars: "{value}: [1,2]"
+```
+
+## Advanced Usage
+
+### Custom Options
+
+```typescript
+import { ToonEncoder, ToonDecoder } from '@toon-json/converter';
+
+// Encoding options
+const encoder = new ToonEncoder({
+  indent: 4,           // spaces for indentation (default: 2)
+  alignColumns: true,  // align table columns (default: true)
+  minColumnWidth: 1    // minimum column width (default: 1)
+});
+
 const toon = encoder.encode(data);
-```
 
-#### `ToonDecoder`
+// Decoding options
+const decoder = new ToonDecoder({
+  preserveNumbers: true,   // parse numbers as numbers (default: true)
+  preserveBooleans: true   // parse booleans as booleans (default: true)
+});
 
-Decoder class for converting TOON to JSON.
-
-```typescript
-const decoder = new ToonDecoder(options);
 const json = decoder.decode(toon);
-```
-
-#### `ToonConverter`
-
-Utility class with static methods for conversion.
-
-```typescript
-ToonConverter.toToon(data, options);
-ToonConverter.toJson(toon, options);
-```
-
-### Types
-
-```typescript
-interface ToonEncodeOptions {
-  indent?: number;
-  alignColumns?: boolean;
-  minColumnWidth?: number;
-}
-
-interface ToonDecodeOptions {
-  preserveNumbers?: boolean;
-  preserveBooleans?: boolean;
-}
-
-type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
-interface JsonObject { [key: string]: JsonValue; }
-type JsonArray = JsonValue[];
 ```
 
 ## Use Cases
 
-### LLM Prompts
-
-Reduce token usage in prompts by up to 60% for structured data:
-
+**LLM Prompts** - Reduce tokens by up to 60%:
 ```typescript
-const userData = {
-  users: Array.from({ length: 100 }, (_, i) => ({
-    id: i + 1,
-    name: `User${i + 1}`,
-    score: Math.floor(Math.random() * 100)
-  }))
-};
-
-const prompt = `Analyze this user data:\n${jsonToToon(userData)}`;
-// Significantly fewer tokens than JSON.stringify(userData)
+const prompt = `Analyze this data:\n${jsonToToon(userData)}`;
 ```
 
-### API Responses
-
-Optimize data transfer for AI-focused APIs:
-
+**API Responses** - Optimize for AI applications:
 ```typescript
 app.get('/api/data', (req, res) => {
-  const data = fetchData();
-  const format = req.query.format || 'json';
-  
-  if (format === 'toon') {
+  if (req.query.format === 'toon') {
     res.type('text/plain').send(jsonToToon(data));
   } else {
     res.json(data);
@@ -292,100 +196,51 @@ app.get('/api/data', (req, res) => {
 });
 ```
 
-### Training Data
-
-Prepare more efficient training datasets:
-
+**Training Data** - Smaller, faster datasets:
 ```typescript
-const trainingData = loadLargeDataset();
-const toonData = jsonToToon(trainingData);
-fs.writeFileSync('training-data.toon', toonData);
-// Smaller file size, faster loading
+fs.writeFileSync('data.toon', jsonToToon(trainingData));
 ```
-
-## Performance
-
-TOON excels with flat, uniform data structures:
-
-| Data Type | JSON Size | TOON Size | Savings |
-|-----------|-----------|-----------|---------|
-| 100 user records | 5.2 KB | 2.8 KB | 46% |
-| 1000 log entries | 52 KB | 28 KB | 46% |
-| Product catalog | 8.1 KB | 4.3 KB | 47% |
-
-*Note: Savings vary based on data structure. Deeply nested or highly varied data may not see significant improvements.*
 
 ## When to Use TOON
 
-### ✅ Best For:
+✅ **Best for:**
 - LLM prompts with structured data
-- Training datasets with uniform records
-- API responses for AI applications
-- Flat arrays of objects (tables, logs, catalogs)
+- Uniform arrays (tables, logs, catalogs)
+- Training datasets
+- AI-focused APIs
 
-### ❌ Not Ideal For:
-- Deeply nested, complex hierarchies
+❌ **Not ideal for:**
+- Deeply nested hierarchies
 - Highly varied data structures
-- Binary data or non-text content
-- When JSON compatibility is required by external systems
+- When JSON compatibility is required
 
-## Testing
+## Token Savings
 
-```bash
-# Run all tests
-npm test
+| Data Type | JSON | TOON | Savings |
+|-----------|------|------|---------|
+| 100 user records | 5.2 KB | 2.8 KB | 46% |
+| 1000 log entries | 52 KB | 28 KB | 46% |
 
-# Run tests in watch mode
-npm run test:watch
+## API Reference
 
-# Run tests with coverage
-npm run test:coverage
+```typescript
+// Convert JSON to TOON
+jsonToToon(data: JsonValue, options?: ToonEncodeOptions): string
+
+// Convert TOON to JSON
+toonToJson(toon: string, options?: ToonDecodeOptions): JsonValue
+
+// Class-based API
+ToonConverter.toToon(data, options)
+ToonConverter.toJson(toon, options)
 ```
-
-## Building
-
-```bash
-# Build the package
-npm run build
-
-# The compiled files will be in the dist/ directory
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Inspired by the TOON format specification
-- Built for the AI and LLM community
-- Thanks to all contributors
 
 ## Links
 
 - [NPM Package](https://www.npmjs.com/package/@toon-json/converter)
 - [GitHub Repository](https://github.com/TheJojoJoseph/json-toon-converter)
-- [Issue Tracker](https://github.com/TheJojoJoseph/json-toon-converter/issues)
-- [TOON Format Specification](https://github.com/toon-format/toon)
+- [TOON Format Spec](https://github.com/toon-format/toon)
 
-## Support
+## License
 
-If you find this package useful, please consider:
-- ⭐ Starring the repository
-- 🐛 Reporting bugs
-- 💡 Suggesting new features
-- 📖 Improving documentation
-
----
-
-
+MIT

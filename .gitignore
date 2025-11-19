@@ -8,3 +8,11 @@ coverage/
 .idea/
 *.swp
 *.swo
+
+# Build artifacts
+*.tgz
+
+# Test files
+src/**/*.test.ts
+src/**/*.yaml
+src/**/*.yml

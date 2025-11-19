@@ -1,40 +1,64 @@
 /**
- * Options for encoding JSON to TOON format
+ * Core type definitions for TOON format converter
+ */
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+export type JsonArray = JsonValue[];
+
+/**
+ * Delimiter options for TOON format
+ */
+export type ToonDelimiter = ',' | '\t' | '|';
+
+/**
+ * Options for encoding JSON to TOON
  */
 export interface ToonEncodeOptions {
   /** Number of spaces for indentation (default: 2) */
   indent?: number;
-  /** Whether to align table columns (default: true) */
-  alignColumns?: boolean;
-  /** Minimum column width for table formatting (default: 1) */
-  minColumnWidth?: number;
-  /** Use compact space-separated format for simple arrays (default: false) */
-  compactArrays?: boolean;
+  /** Default delimiter for arrays (default: ',') */
+  delimiter?: ToonDelimiter;
+  /** Enable key folding for nested objects (default: false) */
+  enableKeyFolding?: boolean;
+  /** Maximum depth for key folding (default: Infinity) */
+  flattenDepth?: number;
 }
 
 /**
- * Options for decoding TOON to JSON format
+ * Options for decoding TOON to JSON
  */
 export interface ToonDecodeOptions {
-  /** Whether to preserve number types (default: true) */
+  /** Parse numbers as numbers instead of strings (default: true) */
   preserveNumbers?: boolean;
-  /** Whether to preserve boolean types (default: true) */
+  /** Parse booleans as booleans instead of strings (default: true) */
   preserveBooleans?: boolean;
+  /** Enable path expansion for folded keys (default: false) */
+  expandPaths?: boolean | 'safe';
+  /** Throw errors on invalid TOON (default: true) */
+  strict?: boolean;
 }
 
 /**
- * Represents a JSON value type
+ * Parsed array header information
  */
-export type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
-
-/**
- * Represents a JSON object
- */
-export interface JsonObject {
-  [key: string]: JsonValue;
+export interface ArrayHeader {
+  key?: string;
+  length: number;
+  delimiter: ToonDelimiter;
+  fields?: string[];
+  isTabular: boolean;
 }
 
 /**
- * Represents a JSON array
+ * Internal line representation during parsing
  */
-export type JsonArray = JsonValue[];
+export interface ParsedLine {
+  content: string;
+  depth: number;
+  lineNumber: number;
+  isBlank: boolean;
+}
