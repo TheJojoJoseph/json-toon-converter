@@ -191,7 +191,7 @@ active: true`;
       const toon = jsonToToon(data);
       expect(toon).toContain('items:');
       expect(toon).toContain('- 1');
-      expect(toon).toContain('- text');
+      expect(toon).toContain('- "text"');
       expect(toon).toContain('- id: 1');
     });
 
