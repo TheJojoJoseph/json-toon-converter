@@ -1,302 +1,622 @@
-import { ToonDecodeOptions, JsonValue, JsonObject, JsonArray } from './types';
-
 /**
- * Decodes TOON format to JSON
+ * TOON Decoder - Converts TOON format to JSON
  */
+
+import {
+  JsonValue,
+  JsonObject,
+  JsonArray,
+  ToonDecodeOptions,
+  ToonDelimiter,
+  ParsedLine,
+  ArrayHeader,
+} from './types';
+import {
+  parsePrimitive,
+  parseDelimitedValues,
+  detectDelimiter,
+  unescapeString,
+} from './utils';
+
 export class ToonDecoder {
-  private options: Required<ToonDecodeOptions>;
-  private lines: string[];
+  private preserveNumbers: boolean;
+  private preserveBooleans: boolean;
+  private expandPaths: boolean | 'safe';
+  private strict: boolean;
+  private lines: ParsedLine[];
   private currentIndex: number;
+  private indentSize: number;
 
   constructor(options: ToonDecodeOptions = {}) {
-    this.options = {
-      preserveNumbers: options.preserveNumbers ?? true,
-      preserveBooleans: options.preserveBooleans ?? true,
-    };
+    this.preserveNumbers = options.preserveNumbers ?? true;
+    this.preserveBooleans = options.preserveBooleans ?? true;
+    this.expandPaths = options.expandPaths ?? false;
+    this.strict = options.strict ?? true;
     this.lines = [];
     this.currentIndex = 0;
+    this.indentSize = 0;
   }
 
   /**
-   * Decode TOON format to JSON
+   * Decode a TOON string to JSON
    */
   decode(toon: string): JsonValue {
-    // Keep all lines but filter empty ones for processing
-    const allLines = toon.split('\n');
-    this.lines = allLines.filter(line => line.trim() !== '');
+    this.lines = this.parseLines(toon);
     this.currentIndex = 0;
     
     if (this.lines.length === 0) {
       return null;
     }
 
-    // Handle special cases
-    const firstLine = this.lines[0].trim();
-    if (firstLine === '{}') {
-      return {};
+    // Detect indent size from first indented line
+    this.indentSize = this.detectIndentSize();
+    
+    // Determine root form
+    const rootForm = this.determineRootForm();
+    
+    if (rootForm === 'object') {
+      const obj = this.decodeObject(0);
+      return this.expandPaths ? this.expandPathsInObject(obj) : obj;
+    } else if (rootForm === 'array') {
+      return this.decodeArray(0);
+    } else {
+      // Single primitive value
+      const line = this.lines[0];
+      return this.parsePrimitiveValue(line.content);
     }
-    if (firstLine === '[]') {
-      return [];
-    }
-
-    // Check if it's a root-level table (array)
-    if (this.isTableHeader(0)) {
-      return this.parseTable(this.getIndent(this.lines[0]));
-    }
-
-    // Check if it's a root-level object (indented content)
-    const firstIndent = this.getIndent(this.lines[0]);
-    if (firstIndent > 0) {
-      return this.parseObject(-2);
-    }
-
-    // Single primitive value
-    return this.parsePrimitive(firstLine);
   }
 
-  private parseObject(baseIndent: number): JsonObject {
-    const obj: JsonObject = {};
+  /**
+   * Parse input into lines with depth information
+   */
+  private parseLines(toon: string): ParsedLine[] {
+    const rawLines = toon.split('\n');
+    const parsed: ParsedLine[] = [];
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      const trimmed = line.trimEnd();
+      
+      // Calculate depth from leading spaces
+      const leadingSpaces = line.length - line.trimStart().length;
+      const depth = this.indentSize > 0 ? Math.floor(leadingSpaces / this.indentSize) : 0;
+      
+      parsed.push({
+        content: trimmed,
+        depth,
+        lineNumber: i + 1,
+        isBlank: trimmed.length === 0,
+      });
+    }
+
+    return parsed;
+  }
+
+  /**
+   * Detect indent size from first indented line
+   */
+  private detectIndentSize(): number {
+    for (const line of this.lines) {
+      if (line.isBlank) continue;
+      const leadingSpaces = line.content.length - line.content.trimStart().length;
+      if (leadingSpaces > 0) {
+        return leadingSpaces;
+      }
+    }
+    return 2; // Default
+  }
+
+  /**
+   * Determine root form (object, array, or primitive)
+   */
+  private determineRootForm(): 'object' | 'array' | 'primitive' {
+    const firstNonBlank = this.lines.find((l) => !l.isBlank);
+    if (!firstNonBlank) return 'object';
+
+    const content = firstNonBlank.content.trim();
     
-    // Determine the expected child indentation
-    // If baseIndent is -2 (root level), children should be at indent 0 or more
-    // Otherwise, children should be at baseIndent + 2
-    const expectedChildIndent = baseIndent < 0 ? 0 : baseIndent + 2;
+    // Check if it starts with array header
+    if (content.startsWith('[') || content.match(/^"[^"]*"\[/)) {
+      return 'array';
+    }
+    
+    // Check if it has a colon (key-value pair)
+    if (content.includes(':')) {
+      return 'object';
+    }
+    
+    // Check if it starts with hyphen (list item)
+    if (content.startsWith('- ')) {
+      return 'array';
+    }
+    
+    return 'primitive';
+  }
+
+  /**
+   * Decode an object starting at the given depth
+   */
+  private decodeObject(depth: number): JsonObject {
+    const obj: JsonObject = {};
 
     while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];
-      const indent = this.getIndent(line);
-      const content = line.trim();
-
-      // End of object - line at same or lower indentation than base
-      if (baseIndent >= 0 && indent <= baseIndent) {
-        break;
-      }
-
-      // For root-level objects (baseIndent < 0), we need to check if we're still at the right level
-      if (baseIndent < 0) {
-        // All lines should have some indentation for root object
-        if (indent < 2) {
-          break;
-        }
-        // If this is the first property, set the expected indent
-        if (Object.keys(obj).length === 0) {
-          // Use the actual indent of the first line
-        } else {
-          // Check if we've moved to a different indent level (sibling ended)
-          const firstKey = Object.keys(obj)[0];
-          if (firstKey && indent < 2) {
-            break;
-          }
-        }
-      }
-
-      // Skip if not at the right indentation level for this object's children
-      if (baseIndent >= 0 && indent !== expectedChildIndent) {
-        break;
-      }
-
-      // Check if it's a key-value pair on the same line
-      const spaceIndex = content.indexOf(' ');
-      if (spaceIndex > 0 && !this.isTableHeader(this.currentIndex)) {
-        const key = content.substring(0, spaceIndex);
-        const value = content.substring(spaceIndex + 1).trim();
-        obj[key] = this.parsePrimitive(value);
+      
+      // Skip blank lines
+      if (line.isBlank) {
         this.currentIndex++;
         continue;
       }
 
-      // Key with value on next line(s)
-      const key = content;
-      this.currentIndex++;
-
-      if (this.currentIndex >= this.lines.length) {
-        obj[key] = null;
+      // Calculate actual depth
+      const actualDepth = this.calculateDepth(line);
+      
+      // If we've gone to a shallower depth, we're done with this object
+      if (actualDepth < depth) {
         break;
       }
+      
+      // If we're deeper, skip (handled by nested structures)
+      if (actualDepth > depth) {
+        this.currentIndex++;
+        continue;
+      }
 
-      const nextLine = this.lines[this.currentIndex];
-      const nextIndent = this.getIndent(nextLine);
-
-      // Check if it's a table
-      if (this.isTableHeader(this.currentIndex)) {
-        obj[key] = this.parseTable(nextIndent);
-      } else if (nextIndent > indent) {
-        const nextContent = nextLine.trim();
-        // Check if it's a list (starts with -)
-        if (nextContent.startsWith('- ')) {
-          obj[key] = this.parseList(nextIndent);
-        } else {
-          // Nested object
-          obj[key] = this.parseObject(indent);
+      // Parse key-value pair
+      const content = line.content.trim();
+      
+      // Check for array header
+      if (this.isArrayHeader(content)) {
+        const header = this.parseArrayHeader(content);
+        this.currentIndex++;
+        const arr = this.decodeArrayWithHeader(header, depth);
+        if (header.key) {
+          obj[header.key] = arr;
         }
-      } else if (nextIndent === indent) {
-        // Value on same line as key (space-separated array or single value)
-        const parts = content.split(/\s+/);
-        if (parts.length > 1) {
-          // Space-separated array
-          obj[key] = parts.slice(1).map(v => this.parsePrimitive(v));
-        } else {
-          obj[key] = null;
+        continue;
+      }
+
+      // Parse key-value
+      const colonIndex = this.findUnquotedColon(content);
+      if (colonIndex === -1) {
+        if (this.strict) {
+          throw new Error(`Missing colon in line ${line.lineNumber}: ${content}`);
         }
         this.currentIndex++;
+        continue;
+      }
+
+      const keyPart = content.substring(0, colonIndex).trim();
+      const valuePart = content.substring(colonIndex + 1).trim();
+      
+      const key = this.parseKey(keyPart);
+
+      if (valuePart === '') {
+        // Nested object
+        this.currentIndex++;
+        obj[key] = this.decodeObject(depth + 1);
       } else {
-        // No value, it's just a key - shouldn't happen in valid TOON
-        obj[key] = null;
+        // Primitive value
+        obj[key] = this.parsePrimitiveValue(valuePart);
+        this.currentIndex++;
       }
     }
 
     return obj;
   }
 
-  private parseList(baseIndent: number): JsonArray {
-    const result: JsonArray = [];
-
-    while (this.currentIndex < this.lines.length) {
-      const line = this.lines[this.currentIndex];
-      const indent = this.getIndent(line);
-      const content = line.trim();
-
-      // End of list
-      if (indent < baseIndent) {
-        break;
-      }
-
-      if (indent === baseIndent && content.startsWith('- ')) {
-        const value = content.substring(2).trim();
-        result.push(this.parsePrimitive(value));
-        this.currentIndex++;
-      } else {
-        break;
-      }
-    }
-
-    return result;
-  }
-
-  private parseTable(baseIndent: number): JsonArray {
-    const result: JsonArray = [];
-
-    // Parse header
-    const headerLine = this.lines[this.currentIndex];
-    const headers = this.parseTableRow(headerLine);
+  /**
+   * Decode an array starting at the given depth
+   */
+  private decodeArray(depth: number): JsonArray {
+    const line = this.lines[this.currentIndex];
+    const content = line.content.trim();
+    
+    const header = this.parseArrayHeader(content);
     this.currentIndex++;
+    
+    return this.decodeArrayWithHeader(header, depth);
+  }
 
-    // Parse data rows
+  /**
+   * Decode an array with a parsed header
+   */
+  private decodeArrayWithHeader(header: ArrayHeader, depth: number): JsonArray {
+    const arr: JsonArray = [];
+
+    if (header.length === 0) {
+      return arr;
+    }
+
+    if (header.isTabular && header.fields) {
+      // Tabular array
+      return this.decodeTabularArray(header, depth);
+    }
+
+    // Check if there's inline content (primitive array)
+    const currentLine = this.lines[this.currentIndex - 1];
+    const colonIndex = this.findUnquotedColon(currentLine.content);
+    if (colonIndex !== -1) {
+      const afterColon = currentLine.content.substring(colonIndex + 1).trim();
+      if (afterColon) {
+        // Inline primitive array
+        const values = parseDelimitedValues(afterColon, header.delimiter);
+        
+        if (this.strict && values.length !== header.length) {
+          throw new Error(
+            `Array declared ${header.length} items but found ${values.length}`
+          );
+        }
+        
+        return values.map((v) => this.parsePrimitiveValue(v));
+      }
+    }
+
+    // List format array
+    return this.decodeListArray(header, depth);
+  }
+
+  /**
+   * Decode a tabular array
+   */
+  private decodeTabularArray(header: ArrayHeader, depth: number): JsonArray {
+    const arr: JsonArray = [];
+    const fields = header.fields!;
+    let rowCount = 0;
+
+    while (this.currentIndex < this.lines.length && rowCount < header.length) {
+      const line = this.lines[this.currentIndex];
+      
+      if (line.isBlank) {
+        if (this.strict && rowCount > 0 && rowCount < header.length) {
+          throw new Error(`Blank line in tabular array at line ${line.lineNumber}`);
+        }
+        this.currentIndex++;
+        continue;
+      }
+
+      const actualDepth = this.calculateDepth(line);
+      
+      if (actualDepth < depth + 1) {
+        break;
+      }
+      
+      if (actualDepth > depth + 1) {
+        this.currentIndex++;
+        continue;
+      }
+
+      // Parse row
+      const content = line.content.trim();
+      const values = parseDelimitedValues(content, header.delimiter);
+      
+      if (values.length !== fields.length) {
+        if (this.strict) {
+          throw new Error(
+            `Row at line ${line.lineNumber} has ${values.length} values, expected ${fields.length}`
+          );
+        }
+      }
+
+      const obj: JsonObject = {};
+      for (let i = 0; i < fields.length; i++) {
+        obj[fields[i]] = this.parsePrimitiveValue(values[i] || '');
+      }
+      
+      arr.push(obj);
+      rowCount++;
+      this.currentIndex++;
+    }
+
+    if (this.strict && rowCount !== header.length) {
+      throw new Error(`Array declared ${header.length} items but found ${rowCount}`);
+    }
+
+    return arr;
+  }
+
+  /**
+   * Decode a list format array
+   */
+  private decodeListArray(header: ArrayHeader, depth: number): JsonArray {
+    const arr: JsonArray = [];
+    let itemCount = 0;
+
+    while (this.currentIndex < this.lines.length && itemCount < header.length) {
+      const line = this.lines[this.currentIndex];
+      
+      if (line.isBlank) {
+        if (this.strict && itemCount > 0 && itemCount < header.length) {
+          throw new Error(`Blank line in list array at line ${line.lineNumber}`);
+        }
+        this.currentIndex++;
+        continue;
+      }
+
+      const actualDepth = this.calculateDepth(line);
+      
+      if (actualDepth < depth + 1) {
+        break;
+      }
+      
+      if (actualDepth > depth + 1) {
+        this.currentIndex++;
+        continue;
+      }
+
+      const content = line.content.trim();
+      
+      if (!content.startsWith('- ')) {
+        if (this.strict) {
+          throw new Error(`Expected list item marker '- ' at line ${line.lineNumber}`);
+        }
+        this.currentIndex++;
+        continue;
+      }
+
+      const afterHyphen = content.substring(2);
+      
+      // Check if it's an inline array
+      if (this.isArrayHeader(afterHyphen)) {
+        const itemHeader = this.parseArrayHeader(afterHyphen);
+        this.currentIndex++;
+        arr.push(this.decodeArrayWithHeader(itemHeader, depth + 1));
+        itemCount++;
+        continue;
+      }
+
+      // Check if it's an object (has colon)
+      const colonIndex = this.findUnquotedColon(afterHyphen);
+      if (colonIndex !== -1) {
+        // Object item
+        const obj = this.decodeListObject(afterHyphen, depth + 1);
+        arr.push(obj);
+        itemCount++;
+        this.currentIndex++;
+        continue;
+      }
+
+      // Primitive item
+      arr.push(this.parsePrimitiveValue(afterHyphen));
+      itemCount++;
+      this.currentIndex++;
+    }
+
+    if (this.strict && itemCount !== header.length) {
+      throw new Error(`Array declared ${header.length} items but found ${itemCount}`);
+    }
+
+    return arr;
+  }
+
+  /**
+   * Decode an object that starts on a list item line
+   */
+  private decodeListObject(firstLine: string, depth: number): JsonObject {
+    const obj: JsonObject = {};
+    
+    // Parse first field
+    const colonIndex = this.findUnquotedColon(firstLine);
+    if (colonIndex !== -1) {
+      const keyPart = firstLine.substring(0, colonIndex).trim();
+      const valuePart = firstLine.substring(colonIndex + 1).trim();
+      const key = this.parseKey(keyPart);
+      
+      if (valuePart === '') {
+        // First field is nested
+        obj[key] = this.decodeObject(depth + 1);
+      } else {
+        obj[key] = this.parsePrimitiveValue(valuePart);
+      }
+    }
+
+    // Parse remaining fields at depth + 1
     while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];
-      const indent = this.getIndent(line);
-
-      // End of table
-      if (indent < baseIndent) {
-        break;
-      }
-
-      if (indent === baseIndent) {
-        const values = this.parseTableRow(line);
-        const obj: JsonObject = {};
-
-        for (let i = 0; i < headers.length; i++) {
-          obj[headers[i]] = i < values.length ? this.parsePrimitive(values[i]) : null;
-        }
-
-        result.push(obj);
+      
+      if (line.isBlank) {
         this.currentIndex++;
-      } else {
+        continue;
+      }
+
+      const actualDepth = this.calculateDepth(line);
+      
+      if (actualDepth < depth + 1) {
         break;
       }
-    }
+      
+      if (actualDepth > depth + 1) {
+        this.currentIndex++;
+        continue;
+      }
 
-    return result;
-  }
+      const content = line.content.trim();
+      
+      // Check for array header
+      if (this.isArrayHeader(content)) {
+        const header = this.parseArrayHeader(content);
+        this.currentIndex++;
+        const arr = this.decodeArrayWithHeader(header, depth + 1);
+        if (header.key) {
+          obj[header.key] = arr;
+        }
+        continue;
+      }
 
-  private parseTableRow(line: string): string[] {
-    const content = line.trim();
-    // Split by 2 or more spaces to handle aligned columns
-    return content.split(/\s{2,}/).map((s) => s.trim());
-  }
+      // Parse key-value
+      const colonIdx = this.findUnquotedColon(content);
+      if (colonIdx === -1) {
+        break;
+      }
 
-  private isTableHeader(index: number): boolean {
-    if (index >= this.lines.length || index + 1 >= this.lines.length) {
-      return false;
-    }
+      const keyPart = content.substring(0, colonIdx).trim();
+      const valuePart = content.substring(colonIdx + 1).trim();
+      const key = this.parseKey(keyPart);
 
-    const currentLine = this.lines[index];
-    const nextLine = this.lines[index + 1];
-
-    const currentIndent = this.getIndent(currentLine);
-    const nextIndent = this.getIndent(nextLine);
-
-    // Both lines should have the same indentation
-    if (currentIndent !== nextIndent) {
-      return false;
-    }
-
-    const currentContent = currentLine.trim();
-    const nextContent = nextLine.trim();
-
-    // Both should have content
-    if (!currentContent || !nextContent) {
-      return false;
-    }
-
-    // Check if both lines have multiple columns (2+ spaces separator)
-    const currentCols = currentContent.split(/\s{2,}/).length;
-    const nextCols = nextContent.split(/\s{2,}/).length;
-
-    return currentCols > 1 && currentCols === nextCols;
-  }
-
-  private parsePrimitive(value: string): JsonValue {
-    const trimmed = value.trim();
-
-    // Handle quoted strings
-    if (
-      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'"))
-    ) {
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        return trimmed.slice(1, -1);
+      if (valuePart === '') {
+        this.currentIndex++;
+        obj[key] = this.decodeObject(depth + 2);
+      } else {
+        obj[key] = this.parsePrimitiveValue(valuePart);
+        this.currentIndex++;
       }
     }
 
-    // Handle null
-    if (trimmed === 'null') {
-      return null;
+    return obj;
+  }
+
+  /**
+   * Check if a line contains an array header
+   */
+  private isArrayHeader(content: string): boolean {
+    return /\[[0-9]+[\t|]?\]/.test(content);
+  }
+
+  /**
+   * Parse an array header
+   */
+  private parseArrayHeader(content: string): ArrayHeader {
+    let key: string | undefined;
+    
+    // Check if there's a key before the bracket
+    const bracketIndex = content.indexOf('[');
+    if (bracketIndex > 0) {
+      const keyPart = content.substring(0, bracketIndex).trim();
+      key = this.parseKey(keyPart);
     }
 
-    // Handle booleans
-    if (this.options.preserveBooleans) {
-      if (trimmed === 'true') return true;
-      if (trimmed === 'false') return false;
+    // Extract bracket content
+    const bracketMatch = content.match(/\[([0-9]+)([\t|])?\]/);
+    if (!bracketMatch) {
+      throw new Error(`Invalid array header: ${content}`);
     }
 
-    // Handle numbers
-    if (this.options.preserveNumbers && !isNaN(Number(trimmed)) && trimmed !== '') {
-      return Number(trimmed);
+    const length = parseInt(bracketMatch[1], 10);
+    const delimiterSymbol = bracketMatch[2] || '';
+    const delimiter = detectDelimiter(bracketMatch[1] + delimiterSymbol);
+
+    // Check for fields (tabular format)
+    let fields: string[] | undefined;
+    let isTabular = false;
+    
+    const afterBracket = content.substring(bracketMatch.index! + bracketMatch[0].length);
+    const fieldsMatch = afterBracket.match(/^\{([^}]+)\}/);
+    
+    if (fieldsMatch) {
+      const fieldsStr = fieldsMatch[1];
+      fields = parseDelimitedValues(fieldsStr, delimiter).map((f) => this.parseKey(f));
+      isTabular = true;
     }
 
+    return {
+      key,
+      length,
+      delimiter,
+      fields,
+      isTabular,
+    };
+  }
+
+  /**
+   * Parse a key (handle quoted keys)
+   */
+  private parseKey(keyStr: string): string {
+    const trimmed = keyStr.trim();
+    
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      const content = trimmed.slice(1, -1);
+      return unescapeString(content);
+    }
+    
     return trimmed;
   }
 
-  private getIndent(line: string): number {
-    let count = 0;
-    for (const char of line) {
-      if (char === ' ') {
-        count++;
+  /**
+   * Parse a primitive value
+   */
+  private parsePrimitiveValue(value: string): string | number | boolean | null {
+    return parsePrimitive(value, this.preserveNumbers, this.preserveBooleans);
+  }
+
+  /**
+   * Find the first unquoted colon in a string
+   */
+  private findUnquotedColon(str: string): number {
+    let inQuotes = false;
+    let i = 0;
+
+    while (i < str.length) {
+      if (str[i] === '"') {
+        inQuotes = !inQuotes;
+      } else if (str[i] === '\\' && inQuotes && i + 1 < str.length) {
+        i++; // Skip next character
+      } else if (str[i] === ':' && !inQuotes) {
+        return i;
+      }
+      i++;
+    }
+
+    return -1;
+  }
+
+  /**
+   * Calculate the actual depth of a line
+   */
+  private calculateDepth(line: ParsedLine): number {
+    const leadingSpaces = line.content.length - line.content.trimStart().length;
+    return this.indentSize > 0 ? Math.floor(leadingSpaces / this.indentSize) : 0;
+  }
+
+  /**
+   * Expand dotted paths in an object (for key folding)
+   */
+  private expandPathsInObject(obj: JsonObject): JsonObject {
+    const result: JsonObject = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (key.includes('.')) {
+        // Expand the path
+        const parts = key.split('.').map((part) => {
+          // Handle quoted parts
+          if (part.startsWith('"') && part.endsWith('"')) {
+            return unescapeString(part.slice(1, -1));
+          }
+          return part;
+        });
+
+        let current: JsonObject = result;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i];
+          if (!(part in current)) {
+            current[part] = {};
+          }
+          
+          if (typeof current[part] !== 'object' || current[part] === null || Array.isArray(current[part])) {
+            if (this.strict) {
+              throw new Error(`Path expansion conflict at '${parts.slice(0, i + 1).join('.')}'`);
+            }
+            // In non-strict mode, overwrite with object
+            current[part] = {};
+          }
+          
+          current = current[part] as JsonObject;
+        }
+
+        const lastPart = parts[parts.length - 1];
+        current[lastPart] = value;
       } else {
-        break;
+        result[key] = value;
       }
     }
-    return count;
+
+    return result;
   }
 }
 
 /**
  * Convenience function to decode TOON to JSON
  */
-export function toonToJson(toon: string, options?: ToonDecodeOptions): JsonValue {
+export function decode(toon: string, options?: ToonDecodeOptions): JsonValue {
   const decoder = new ToonDecoder(options);
   return decoder.decode(toon);
 }
