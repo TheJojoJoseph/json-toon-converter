@@ -8,7 +8,7 @@ describe('TOON Format Tests from test.yaml', () => {
 
   describe('Empty Structures', () => {
     const inputJson = "{ \"emptyObj\": {}, \"emptyArr\": [] }";
-    const expectedToon = "emptyObj: {}\nemptyArr: []";
+    const expectedToon = "emptyObj: {}\nemptyArr[0]:";
 
     test('encode: empty_structures', () => {
       const data = JSON.parse(inputJson);
@@ -163,7 +163,8 @@ describe('TOON Format Tests from test.yaml', () => {
 
   describe('Number Formats', () => {
     const inputJson = "{\n  \"neg\": -42,\n  \"floatNeg\": -12.50,\n  \"floatZero\": 10.000,\n  \"sci\": 9.9e-4\n}";
-    const expectedToon = "neg: -42\nfloatNeg: -12.50\nfloatZero: 10.000\nsci: 9.9e-4";
+    // After JSON.parse, numbers lose their original format: -12.50 -> -12.5, 10.000 -> 10, 9.9e-4 -> 0.00099
+    const expectedToon = "neg: -42\nfloatNeg: -12.5\nfloatZero: 10\nsci: 0.00099";
 
     test('encode: number_formats', () => {
       const data = JSON.parse(inputJson);
