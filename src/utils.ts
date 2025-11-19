@@ -18,6 +18,11 @@ export function needsQuoting(str: string, delimiter: ToonDelimiter = ','): boole
   if (str.includes('\r')) return true;
   if (str.includes('\t') && delimiter !== '\t') return true;
   if (str.includes(':')) return true;
+  if (str.includes('{')) return true;
+  if (str.includes('}')) return true;
+  if (str.includes('[')) return true;
+  if (str.includes(']')) return true;
+  if (str.includes('-') && str.startsWith('-')) return true;
   
   // Check if it looks like a number, boolean, or null
   if (str === 'true' || str === 'false' || str === 'null') return true;
@@ -272,4 +277,34 @@ export function detectDelimiter(bracketContent: string): ToonDelimiter {
 export function normalizeNumber(num: number): number {
   if (Object.is(num, -0)) return 0;
   return num;
+}
+
+/**
+ * Format number preserving original format (trailing zeros, scientific notation)
+ */
+export function formatNumber(num: number, originalStr?: string): string {
+  // If we have the original string representation, use it
+  if (originalStr !== undefined) {
+    return originalStr;
+  }
+  
+  // Otherwise convert to string
+  const normalized = normalizeNumber(num);
+  return normalized.toString();
+}
+
+/**
+ * Check if a string contains multiline content
+ */
+export function isMultiline(str: string): boolean {
+  return str.includes('\n');
+}
+
+/**
+ * Format multiline string with pipe syntax
+ */
+export function formatMultilineString(str: string, depth: number, indent: number): string[] {
+  const lines = str.split('\n');
+  const indentStr = ' '.repeat((depth + 1) * indent);
+  return lines.map(line => indentStr + line);
 }

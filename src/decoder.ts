@@ -30,7 +30,7 @@ export class ToonDecoder {
   constructor(options: ToonDecodeOptions = {}) {
     this.preserveNumbers = options.preserveNumbers ?? true;
     this.preserveBooleans = options.preserveBooleans ?? true;
-    this.expandPaths = options.expandPaths ?? false;
+    this.expandPaths = options.expandPaths ?? true;
     this.strict = options.strict ?? true;
     this.lines = [];
     this.currentIndex = 0;
@@ -191,9 +191,41 @@ export class ToonDecoder {
       
       const key = this.parseKey(keyPart);
 
-      if (valuePart === '') {
-        // Nested object
+      // Check for empty structures
+      if (valuePart === '{}') {
+        obj[key] = {};
         this.currentIndex++;
+        continue;
+      }
+      
+      if (valuePart === '[]') {
+        obj[key] = [];
+        this.currentIndex++;
+        continue;
+      }
+      
+      // Check for multiline string with pipe syntax
+      if (valuePart === '|') {
+        this.currentIndex++;
+        obj[key] = this.decodeMultilineString(depth + 1);
+        continue;
+      }
+
+      if (valuePart === '') {
+        // Check if next line is a list item
+        this.currentIndex++;
+        if (this.currentIndex < this.lines.length) {
+          const nextLine = this.lines[this.currentIndex];
+          const nextContent = nextLine.content.trim();
+          const nextDepth = this.calculateDepth(nextLine);
+          
+          if (nextDepth === depth + 1 && nextContent.startsWith('- ')) {
+            // This is a list array without count notation
+            obj[key] = this.decodeListArrayWithoutHeader(depth + 1);
+            continue;
+          }
+        }
+        // Nested object
         obj[key] = this.decodeObject(depth + 1);
       } else {
         // Primitive value
@@ -316,13 +348,85 @@ export class ToonDecoder {
   }
 
   /**
+   * Decode a list format array without a header (dynamic length)
+   */
+  private decodeListArrayWithoutHeader(depth: number): JsonArray {
+    const arr: JsonArray = [];
+
+    while (this.currentIndex < this.lines.length) {
+      const line = this.lines[this.currentIndex];
+      
+      if (line.isBlank) {
+        this.currentIndex++;
+        continue;
+      }
+
+      const actualDepth = this.calculateDepth(line);
+      
+      if (actualDepth < depth) {
+        break;
+      }
+      
+      if (actualDepth > depth) {
+        this.currentIndex++;
+        continue;
+      }
+
+      const content = line.content.trim();
+      
+      if (!content.startsWith('- ')) {
+        break;
+      }
+
+      const afterHyphen = content.substring(2);
+      
+      // Check if it's an inline bracketed array like [1,2,3]
+      if (afterHyphen.startsWith('[') && afterHyphen.includes(']')) {
+        const closeBracket = afterHyphen.indexOf(']');
+        const bracketContent = afterHyphen.substring(1, closeBracket);
+        // For inline arrays, default to comma delimiter
+        const delimiter = ',';
+        const values = parseDelimitedValues(bracketContent, delimiter);
+        arr.push(values.map((v) => this.parsePrimitiveValue(v)));
+        this.currentIndex++;
+        continue;
+      }
+      
+      // Check if it's an inline array header like [3]: 1,2,3
+      if (this.isArrayHeader(afterHyphen)) {
+        const itemHeader = this.parseArrayHeader(afterHyphen);
+        this.currentIndex++;
+        arr.push(this.decodeArrayWithHeader(itemHeader, depth));
+        continue;
+      }
+
+      // Check if it's an object (has colon)
+      const colonIndex = this.findUnquotedColon(afterHyphen);
+      if (colonIndex !== -1) {
+        // Object item
+        this.currentIndex++; // Move past the current line before parsing additional fields
+        const obj = this.decodeListObject(afterHyphen, depth);
+        arr.push(obj);
+        continue;
+      }
+
+      // Primitive item
+      arr.push(this.parsePrimitiveValue(afterHyphen));
+      this.currentIndex++;
+    }
+
+    return arr;
+  }
+
+  /**
    * Decode a list format array
    */
   private decodeListArray(header: ArrayHeader, depth: number): JsonArray {
     const arr: JsonArray = [];
     let itemCount = 0;
+    const maxItems = header.length || Infinity;
 
-    while (this.currentIndex < this.lines.length && itemCount < header.length) {
+    while (this.currentIndex < this.lines.length && itemCount < maxItems) {
       const line = this.lines[this.currentIndex];
       
       if (line.isBlank) {
@@ -356,11 +460,24 @@ export class ToonDecoder {
 
       const afterHyphen = content.substring(2);
       
-      // Check if it's an inline array
+      // Check if it's an inline bracketed array like [1,2,3]
+      if (afterHyphen.startsWith('[') && afterHyphen.includes(']')) {
+        const closeBracket = afterHyphen.indexOf(']');
+        const bracketContent = afterHyphen.substring(1, closeBracket);
+        // For inline arrays, default to comma delimiter
+        const delimiter = ',';
+        const values = parseDelimitedValues(bracketContent, delimiter);
+        arr.push(values.map((v) => this.parsePrimitiveValue(v)));
+        this.currentIndex++;
+        itemCount++;
+        continue;
+      }
+      
+      // Check if it's an inline array header like [3]: 1,2,3
       if (this.isArrayHeader(afterHyphen)) {
         const itemHeader = this.parseArrayHeader(afterHyphen);
         this.currentIndex++;
-        arr.push(this.decodeArrayWithHeader(itemHeader, depth + 1));
+        arr.push(this.decodeArrayWithHeader(itemHeader, depth));
         itemCount++;
         continue;
       }
@@ -369,10 +486,10 @@ export class ToonDecoder {
       const colonIndex = this.findUnquotedColon(afterHyphen);
       if (colonIndex !== -1) {
         // Object item
-        const obj = this.decodeListObject(afterHyphen, depth + 1);
+        this.currentIndex++; // Move past the current line before parsing additional fields
+        const obj = this.decodeListObject(afterHyphen, depth);
         arr.push(obj);
         itemCount++;
-        this.currentIndex++;
         continue;
       }
 
@@ -382,7 +499,7 @@ export class ToonDecoder {
       this.currentIndex++;
     }
 
-    if (this.strict && itemCount !== header.length) {
+    if (this.strict && header.length && itemCount !== header.length) {
       throw new Error(`Array declared ${header.length} items but found ${itemCount}`);
     }
 
@@ -536,6 +653,37 @@ export class ToonDecoder {
    */
   private parsePrimitiveValue(value: string): string | number | boolean | null {
     return parsePrimitive(value, this.preserveNumbers, this.preserveBooleans);
+  }
+
+  /**
+   * Decode a multiline string (pipe syntax)
+   */
+  private decodeMultilineString(depth: number): string {
+    const lines: string[] = [];
+
+    while (this.currentIndex < this.lines.length) {
+      const line = this.lines[this.currentIndex];
+      
+      if (line.isBlank) {
+        this.currentIndex++;
+        continue;
+      }
+
+      const actualDepth = this.calculateDepth(line);
+      
+      if (actualDepth < depth) {
+        break;
+      }
+      
+      if (actualDepth === depth) {
+        lines.push(line.content.trim());
+        this.currentIndex++;
+      } else {
+        this.currentIndex++;
+      }
+    }
+
+    return lines.join('\n');
   }
 
   /**

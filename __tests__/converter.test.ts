@@ -189,7 +189,7 @@ active: true`;
       };
 
       const toon = jsonToToon(data);
-      expect(toon).toContain('items[3]:');
+      expect(toon).toContain('items:');
       expect(toon).toContain('- 1');
       expect(toon).toContain('- text');
       expect(toon).toContain('- id: 1');
@@ -368,7 +368,7 @@ active: true`;
         },
       };
 
-      const encoder = new ToonEncoder({ indent: 4 });
+      const encoder = new ToonEncoder({ indent: 4, enableKeyFolding: false });
       const toon = encoder.encode(data);
       expect(toon).toContain('    name: Test');
     });
