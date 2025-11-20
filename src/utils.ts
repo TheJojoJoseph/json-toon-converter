@@ -9,7 +9,7 @@ import { ToonDelimiter } from './types';
  */
 export function needsQuoting(str: string, delimiter: ToonDelimiter = ','): boolean {
   if (str === '') return true;
-  
+
   // Check for special characters that require quoting
   if (str.includes(delimiter)) return true;
   if (str.includes('"')) return true;
@@ -23,14 +23,14 @@ export function needsQuoting(str: string, delimiter: ToonDelimiter = ','): boole
   if (str.includes('[')) return true;
   if (str.includes(']')) return true;
   if (str.includes('-') && str.startsWith('-')) return true;
-  
+
   // Check if it looks like a number, boolean, or null
   if (str === 'true' || str === 'false' || str === 'null') return true;
   if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(str)) return true;
-  
+
   // Check for leading/trailing whitespace
   if (str !== str.trim()) return true;
-  
+
   return false;
 }
 
@@ -52,7 +52,7 @@ export function escapeString(str: string): string {
 export function unescapeString(str: string): string {
   let result = '';
   let i = 0;
-  
+
   while (i < str.length) {
     if (str[i] === '\\' && i + 1 < str.length) {
       const next = str[i + 1];
@@ -81,7 +81,7 @@ export function unescapeString(str: string): string {
       i++;
     }
   }
-  
+
   return result;
 }
 
@@ -110,7 +110,7 @@ export function needsKeyQuoting(key: string): boolean {
   if (key.includes('\t')) return true;
   if (key !== key.trim()) return true;
   if (key.startsWith('-')) return true;
-  
+
   return false;
 }
 
@@ -133,7 +133,7 @@ export function parsePrimitive(
   preserveBooleans: boolean = true
 ): string | number | boolean | null {
   const trimmed = token.trim();
-  
+
   // Handle quoted strings
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
     if (trimmed.length < 2) {
@@ -142,16 +142,16 @@ export function parsePrimitive(
     const content = trimmed.slice(1, -1);
     return unescapeString(content);
   }
-  
+
   // Handle booleans
   if (preserveBooleans) {
     if (trimmed === 'true') return true;
     if (trimmed === 'false') return false;
   }
-  
+
   // Handle null
   if (trimmed === 'null') return null;
-  
+
   // Handle numbers
   if (preserveNumbers && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed)) {
     const num = Number(trimmed);
@@ -159,7 +159,7 @@ export function parsePrimitive(
       return num;
     }
   }
-  
+
   // Return as string
   return trimmed;
 }
@@ -167,18 +167,15 @@ export function parsePrimitive(
 /**
  * Parse delimited values from a string
  */
-export function parseDelimitedValues(
-  line: string,
-  delimiter: ToonDelimiter = ','
-): string[] {
+export function parseDelimitedValues(line: string, delimiter: ToonDelimiter = ','): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;
   let i = 0;
-  
+
   while (i < line.length) {
     const char = line[i];
-    
+
     if (char === '"') {
       inQuotes = !inQuotes;
       current += char;
@@ -196,12 +193,12 @@ export function parseDelimitedValues(
       i++;
     }
   }
-  
+
   // Add the last value
   if (current || values.length > 0) {
     values.push(current.trim());
   }
-  
+
   return values;
 }
 
@@ -210,15 +207,15 @@ export function parseDelimitedValues(
  */
 export function isUniformArray(arr: unknown[]): boolean {
   if (arr.length === 0) return false;
-  
+
   const firstKeys = Object.keys(arr[0] || {}).sort();
-  
+
   for (let i = 1; i < arr.length; i++) {
     const keys = Object.keys(arr[i] || {}).sort();
     if (keys.length !== firstKeys.length) return false;
     if (!keys.every((k, idx) => k === firstKeys[idx])) return false;
   }
-  
+
   return true;
 }
 
@@ -241,10 +238,7 @@ export function areAllPrimitives(arr: unknown[]): boolean {
 export function areAllValuesPrimitive(obj: Record<string, unknown>): boolean {
   return Object.values(obj).every(
     (val) =>
-      typeof val === 'string' ||
-      typeof val === 'number' ||
-      typeof val === 'boolean' ||
-      val === null
+      typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' || val === null
   );
 }
 
@@ -287,7 +281,7 @@ export function formatNumber(num: number, originalStr?: string): string {
   if (originalStr !== undefined) {
     return originalStr;
   }
-  
+
   // Otherwise convert to string
   const normalized = normalizeNumber(num);
   return normalized.toString();
@@ -306,5 +300,5 @@ export function isMultiline(str: string): boolean {
 export function formatMultilineString(str: string, depth: number, indent: number): string[] {
   const lines = str.split('\n');
   const indentStr = ' '.repeat((depth + 1) * indent);
-  return lines.map(line => indentStr + line);
+  return lines.map((line) => indentStr + line);
 }

@@ -1,6 +1,6 @@
 /**
  * @toon/toon2json - JSON to TOON converter
- * 
+ *
  * A lightweight library for converting between JSON and TOON (Token-Oriented Object Notation) formats.
  * TOON is optimized for LLM token usage while maintaining human readability.
  */
