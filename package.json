@@ -1,6 +1,6 @@
 {
   "name": "@jojojoseph/toon-json-converter",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A lightweight, efficient library for converting between JSON and TOON (Token-Oriented Object Notation) formats, optimized for LLM token usage",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,7 +11,12 @@
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run build && npm test",
     "lint": "eslint src/**/*.ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "example:quick": "npm run build && npx ts-node examples/quick-start.ts",
+    "example:comprehensive": "npm run build && npx ts-node examples/comprehensive-sample.ts",
+    "example:nodejs": "npm run build && npx ts-node examples/nodejs-app-example.ts",
+    "example:basic": "npm run build && npx ts-node examples/basic-usage.ts",
+    "examples": "npm run example:quick"
   },
   "keywords": [
     "json",

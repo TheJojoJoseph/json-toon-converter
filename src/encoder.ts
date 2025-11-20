@@ -2,13 +2,7 @@
  * TOON Encoder - Converts JSON to TOON format
  */
 
-import {
-  JsonValue,
-  JsonObject,
-  JsonArray,
-  ToonEncodeOptions,
-  ToonDelimiter,
-} from './types';
+import { JsonValue, JsonObject, JsonArray, ToonEncodeOptions, ToonDelimiter } from './types';
 import {
   quoteString,
   quoteKey,
@@ -46,11 +40,7 @@ export class ToonEncoder {
   /**
    * Encode a value at a specific depth
    */
-  private encodeValue(
-    value: JsonValue,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodeValue(value: JsonValue, depth: number, key: string = ''): string[] {
     if (value === null) {
       return [this.makeLine(depth, key, 'null')];
     }
@@ -93,11 +83,7 @@ export class ToonEncoder {
   /**
    * Encode an object
    */
-  private encodeObject(
-    obj: JsonObject,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodeObject(obj: JsonObject, depth: number, key: string = ''): string[] {
     const lines: string[] = [];
     const entries = Object.entries(obj);
 
@@ -152,11 +138,7 @@ export class ToonEncoder {
   /**
    * Encode an object with key folding
    */
-  private encodeFoldedObject(
-    obj: JsonObject,
-    depth: number,
-    parentKey: string = ''
-  ): string[] {
+  private encodeFoldedObject(obj: JsonObject, depth: number, parentKey: string = ''): string[] {
     const lines: string[] = [];
     let currentObj = obj;
     const path: string[] = parentKey ? [parentKey] : [];
@@ -166,7 +148,7 @@ export class ToonEncoder {
     while (this.canFold(currentObj, currentDepth)) {
       const [key, value] = Object.entries(currentObj)[0];
       path.push(key);
-      
+
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         currentObj = value as JsonObject;
         currentDepth++;
@@ -186,7 +168,7 @@ export class ToonEncoder {
       }
       return lines;
     }
-    
+
     // Check if we have a single key with an array value - continue folding
     if (entries.length === 1) {
       const [finalKey, finalValue] = entries[0];
@@ -213,11 +195,7 @@ export class ToonEncoder {
   /**
    * Encode an array
    */
-  private encodeArray(
-    arr: JsonArray,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodeArray(arr: JsonArray, depth: number, key: string = ''): string[] {
     const lines: string[] = [];
     const length = arr.length;
 
@@ -251,12 +229,14 @@ export class ToonEncoder {
    */
   private hasMixedPrimitiveTypes(arr: JsonArray): boolean {
     if (arr.length === 0) return false;
-    
-    const types = new Set(arr.map(v => {
-      if (v === null) return 'null';
-      return typeof v;
-    }));
-    
+
+    const types = new Set(
+      arr.map((v) => {
+        if (v === null) return 'null';
+        return typeof v;
+      })
+    );
+
     return types.size > 1;
   }
 
@@ -265,22 +245,27 @@ export class ToonEncoder {
    */
   private hasListMixedTypes(arr: JsonArray): boolean {
     if (arr.length === 0) return false;
-    
+
     let hasPrimitives = false;
     let hasComplex = false;
-    
+
     for (const item of arr) {
-      if (item === null || typeof item === 'boolean' || typeof item === 'number' || typeof item === 'string') {
+      if (
+        item === null ||
+        typeof item === 'boolean' ||
+        typeof item === 'number' ||
+        typeof item === 'string'
+      ) {
         hasPrimitives = true;
       } else {
         hasComplex = true;
       }
-      
+
       if (hasPrimitives && hasComplex) {
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -292,24 +277,23 @@ export class ToonEncoder {
     if (!arr.every((item) => typeof item === 'object' && item !== null && !Array.isArray(item))) {
       return false;
     }
-    
+
     // Check if all objects have the same keys and all values are primitives
     if (!isUniformArray(arr)) return false;
-    
-    return arr.every((item) => 
-      typeof item === 'object' && item !== null && !Array.isArray(item) && 
-      areAllValuesPrimitive(item as Record<string, unknown>)
+
+    return arr.every(
+      (item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        !Array.isArray(item) &&
+        areAllValuesPrimitive(item as Record<string, unknown>)
     );
   }
 
   /**
    * Encode a primitive array
    */
-  private encodePrimitiveArray(
-    arr: JsonArray,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodePrimitiveArray(arr: JsonArray, depth: number, key: string = ''): string[] {
     const delimSymbol = getDelimiterSymbol(this.delimiter);
     const header = key
       ? `${quoteKey(key)}[${arr.length}${delimSymbol}]:`
@@ -336,27 +320,23 @@ export class ToonEncoder {
   /**
    * Encode a tabular array
    */
-  private encodeTabularArray(
-    arr: JsonArray,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodeTabularArray(arr: JsonArray, depth: number, key: string = ''): string[] {
     const lines: string[] = [];
     const length = arr.length;
-    
+
     // Get field names from first object
     const firstObj = arr[0] as JsonObject;
     const fields = Object.keys(firstObj);
-    
+
     // Build header
     const delimSymbol = getDelimiterSymbol(this.delimiter);
     const fieldsStr = fields.map(quoteKey).join(this.delimiter);
     const header = key
       ? `${quoteKey(key)}[${length}${delimSymbol}]{${fieldsStr}}:`
       : `[${length}${delimSymbol}]{${fieldsStr}}:`;
-    
+
     lines.push(this.makeIndent(depth) + header);
-    
+
     // Encode each row
     for (const item of arr) {
       const obj = item as JsonObject;
@@ -367,33 +347,34 @@ export class ToonEncoder {
         if (typeof val === 'number') return normalizeNumber(val).toString();
         return quoteString(val as string, this.delimiter);
       });
-      
+
       lines.push(this.makeIndent(depth + 1) + values.join(this.delimiter));
     }
-    
+
     return lines;
   }
 
   /**
    * Encode a mixed/non-uniform array (list format)
    */
-  private encodeListArray(
-    arr: JsonArray,
-    depth: number,
-    key: string = ''
-  ): string[] {
+  private encodeListArray(arr: JsonArray, depth: number, key: string = ''): string[] {
     const lines: string[] = [];
-    
+
     // Add array header (without count for list arrays)
     const header = key ? `${quoteKey(key)}:` : ':';
     lines.push(this.makeIndent(depth) + header);
-    
+
     // Check if array has mixed types (primitives and objects/arrays)
     const hasMixedTypes = this.hasListMixedTypes(arr);
-    
+
     // Encode each item
     for (const item of arr) {
-      if (item === null || typeof item === 'boolean' || typeof item === 'number' || typeof item === 'string') {
+      if (
+        item === null ||
+        typeof item === 'boolean' ||
+        typeof item === 'number' ||
+        typeof item === 'string'
+      ) {
         // Primitive item
         let value: string;
         if (item === null) value = 'null';
@@ -402,7 +383,7 @@ export class ToonEncoder {
         // Quote strings if array has mixed types (primitives and objects/arrays) for disambiguation
         else if (hasMixedTypes) value = `"${escapeString(item)}"`;
         else value = quoteString(item, this.delimiter);
-        
+
         lines.push(this.makeIndent(depth + 1) + '- ' + value);
       } else if (Array.isArray(item)) {
         // Array item
@@ -437,13 +418,13 @@ export class ToonEncoder {
         // Object item
         const obj = item as JsonObject;
         const entries = Object.entries(obj);
-        
+
         if (entries.length === 0) {
           lines.push(this.makeIndent(depth + 1) + '-');
         } else {
           // First field on hyphen line
           const [firstKey, firstValue] = entries[0];
-          
+
           if (typeof firstValue === 'object' && firstValue !== null) {
             // First field is nested
             lines.push(this.makeIndent(depth + 1) + '- ' + quoteKey(firstKey) + ':');
@@ -454,7 +435,7 @@ export class ToonEncoder {
             const valueLine = valueLines[0].trim();
             lines.push(this.makeIndent(depth + 1) + '- ' + valueLine);
           }
-          
+
           // Remaining fields
           for (let i = 1; i < entries.length; i++) {
             const [k, v] = entries[i];
@@ -463,7 +444,7 @@ export class ToonEncoder {
         }
       }
     }
-    
+
     return lines;
   }
 

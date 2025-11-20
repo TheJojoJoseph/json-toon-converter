@@ -222,16 +222,16 @@ Update `.npmignore` to exclude unnecessary files.
 
 ```bash
 # View package info
-npm view @toon-json/converter
+npm view @jojojoseph/toon-json-converter
 
 # View all versions
-npm view @toon-json/converter versions
+npm view @jojojoseph/toon-json-converter versions
 
 # Deprecate a version
-npm deprecate @toon-json/converter@1.0.0 "Use version 1.0.1 instead"
+npm deprecate @jojojoseph/toon-json-converter@1.0.0 "Use version 1.0.1 instead"
 
 # Unpublish (only within 72 hours)
-npm unpublish @toon-json/converter@1.0.0
+npm unpublish @jojojoseph/toon-json-converter@1.0.0
 ```
 
 ## Resources
